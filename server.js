@@ -54,9 +54,27 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
-// CORS
+// CORS - Revised for Production
+const allowedOrigins = [
+    config.cors.customerUrl?.replace(/\/$/, ""),
+    config.cors.adminUrl?.replace(/\/$/, ""),
+    'http://localhost:5173',
+    'http://localhost:5174'
+].filter(Boolean);
+
 app.use(cors({
-    origin: [config.cors.customerUrl, config.cors.adminUrl],
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        const normalizedOrigin = origin.replace(/\/$/, "");
+        if (allowedOrigins.indexOf(normalizedOrigin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log('CORS Blocked for origin:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
 }));
 
