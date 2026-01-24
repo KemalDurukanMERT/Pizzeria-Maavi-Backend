@@ -64,7 +64,7 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
+        // Allow requests with no origin (like mobile apps, curl requests, or our Printer Bridge script)
         if (!origin) return callback(null, true);
 
         const normalizedOrigin = origin.replace(/\/$/, "");
@@ -72,6 +72,8 @@ app.use(cors({
             callback(null, true);
         } else {
             console.log('CORS Blocked for origin:', origin);
+            // Optionally allows it anyway for debugging if strict is off
+            // For now, let's keep strict but ensure empty origin is handled above
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -136,14 +138,40 @@ app.use(errorHandler);
 // SOCKET.IO
 // ============================================
 
+// Middleware for Socket Authentication
+io.use((socket, next) => {
+    // 1. Allow connections from trusted origins (Browser Clients)
+    const origin = socket.handshake.headers.origin;
+    const isTrustedOrigin = allowedOrigins.includes(origin?.replace(/\/$/, ""));
+
+    if (isTrustedOrigin) {
+        return next();
+    }
+
+    // 2. Allow connections with valid Printer API Key (Server-to-Server / Bridge)
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.['x-api-key'];
+    const PRINTER_SECRET = process.env.PRINTER_SECRET_KEY || config.jwt.secret; // Fallback to JWT secret if specific key not set
+
+    if (token === PRINTER_SECRET) {
+        // Mark socket as a trusted printer
+        socket.isPrinter = true;
+        return next();
+    }
+
+    console.log(`🚫 Socket connection rejected from: ${origin || 'unknown'} (No valid token)`);
+    return next(new Error('Authentication failed: Invalid credentials'));
+});
+
 io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
+    console.log('Client connected:', socket.id, socket.isPrinter ? '(PRINTER)' : '(WEB)');
 
     // Join room based on user type
     socket.on('join', (data) => {
         if (data.type === 'admin') {
+            // Extra check: Only allow admin room if user is authenticated via web or is a verified printer
+            // (For web, you might decode the JWT here, but for now we rely on the connection check)
             socket.join('admin');
-            console.log('Admin joined:', socket.id);
+            console.log('Admin/Printer joined:', socket.id);
         } else if (data.userId) {
             socket.join(`user:${data.userId}`);
             console.log('User joined:', data.userId);
