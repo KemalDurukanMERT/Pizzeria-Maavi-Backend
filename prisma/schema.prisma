@@ -1,0 +1,314 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  phone         String?
+  address       Json?     // Flexible address storage
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  orders        Order[]
+  
+  @@map("users")
+}
+
+enum AdminRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+model Admin {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          AdminRole  @default(STAFF)
+  permissions   Json?      // Flexible permissions storage
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  @@map("admins")
+}
+
+// ============================================
+// MENU STRUCTURE
+// ============================================
+
+model Category {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  description   String?
+  displayOrder  Int       @default(0)
+  isActive      Boolean   @default(true)
+  imageUrl      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  products      Product[]
+  
+  @@map("categories")
+}
+
+model Product {
+  id                String    @id @default(uuid())
+  categoryId        String
+  name              String
+  slug              String    @unique
+  description       String?
+  basePrice         Float
+  imageUrl          String?
+  isAvailable       Boolean   @default(true)
+  isCustomizable    Boolean   @default(false)
+  preparationTime   Int       @default(15) // in minutes
+  nutritionalInfo   Json?     // calories, protein, carbs, fat, etc.
+  allergens         String[]  // array of allergen types
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  category                  Category                  @relation(fields: [categoryId], references: [id])
+  defaultIngredients        ProductIngredient[]
+  customizableIngredients   CustomizableIngredient[]
+  orderItems                OrderItem[]
+  
+  @@index([categoryId])
+  @@map("products")
+}
+
+model Ingredient {
+  id                String    @id @default(uuid())
+  name              String
+  price             Float     @default(0) // additional cost
+  isAvailable       Boolean   @default(true)
+  allergens         String[]  // array of allergen types
+  nutritionalInfo   Json?
+  imageUrl          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  productIngredients        ProductIngredient[]
+  customizableIngredients   CustomizableIngredient[]
+  orderItemCustomizations   OrderItemCustomization[]
+  
+  @@map("ingredients")
+}
+
+// Junction table for default product ingredients
+model ProductIngredient {
+  id            String    @id @default(uuid())
+  productId     String
+  ingredientId  String
+  isDefault     Boolean   @default(true)
+  isRemovable   Boolean   @default(true)
+  quantity      Int       @default(1)
+  createdAt     DateTime  @default(now())
+  
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredient    Ingredient  @relation(fields: [ingredientId], references: [id])
+  
+  @@unique([productId, ingredientId])
+  @@index([productId])
+  @@map("product_ingredients")
+}
+
+enum CustomizationAction {
+  ADD
+  REMOVE
+  EXTRA
+}
+
+// Available customization options for products
+model CustomizableIngredient {
+  id              String              @id @default(uuid())
+  productId       String
+  ingredientId    String
+  action          CustomizationAction
+  priceModifier   Float               @default(0)
+  createdAt       DateTime            @default(now())
+  
+  product         Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ingredient      Ingredient  @relation(fields: [ingredientId], references: [id])
+  
+  @@unique([productId, ingredientId, action])
+  @@index([productId])
+  @@map("customizable_ingredients")
+}
+
+// ============================================
+// ORDERS
+// ============================================
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERING
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  VERKKOMAKSU
+  LOUNASSETELI
+  EPASSI
+  CASH
+}
+
+enum DeliveryType {
+  DELIVERY
+  PICKUP
+}
+
+model Order {
+  id                    String         @id @default(uuid())
+  userId                String?        // nullable for guest orders
+  orderNumber           String         @unique
+  status                OrderStatus    @default(PENDING)
+  subtotal              Float
+  tax                   Float          @default(0)
+  deliveryFee           Float          @default(0)
+  total                 Float
+  paymentMethod         PaymentMethod
+  deliveryType          DeliveryType
+  deliveryAddress       Json?          // street, city, postalCode, instructions
+  customerNotes         String?
+  estimatedDeliveryTime DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  
+  user                  User?          @relation(fields: [userId], references: [id])
+  items                 OrderItem[]
+  payment               Payment?
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                    String    @id @default(uuid())
+  orderId               String
+  productId             String
+  quantity              Int
+  basePrice             Float
+  customizationPrice    Float     @default(0)
+  totalPrice            Float
+  specialInstructions   String?
+  createdAt             DateTime  @default(now())
+  
+  order                 Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product               Product                     @relation(fields: [productId], references: [id])
+  customizations        OrderItemCustomization[]
+  
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderItemCustomization {
+  id              String              @id @default(uuid())
+  orderItemId     String
+  ingredientId    String
+  action          CustomizationAction
+  priceModifier   Float               @default(0)
+  createdAt       DateTime            @default(now())
+  
+  orderItem       OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  ingredient      Ingredient  @relation(fields: [ingredientId], references: [id])
+  
+  @@index([orderItemId])
+  @@map("order_item_customizations")
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  STRIPE
+  VERKKOMAKSU
+  LOUNASSETELI
+  EPASSI
+  CASH
+}
+
+model Payment {
+  id              String          @id @default(uuid())
+  orderId         String          @unique
+  provider        PaymentProvider
+  status          PaymentStatus   @default(PENDING)
+  amount          Float
+  currency        String          @default("EUR")
+  transactionId   String?         // provider transaction reference
+  metadata        Json?           // additional provider-specific data
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  order           Order           @relation(fields: [orderId], references: [id])
+  
+  @@index([orderId])
+  @@map("payments")
+}
+
+// ============================================
+// LOCALIZATION
+// ============================================
+
+enum EntityType {
+  CATEGORY
+  PRODUCT
+  INGREDIENT
+}
+
+enum Language {
+  EN
+  FI
+}
+
+model Translation {
+  id          String      @id @default(uuid())
+  entityType  EntityType
+  entityId    String
+  field       String      // e.g., "name", "description"
+  language    Language
+  value       String      @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@unique([entityType, entityId, field, language])
+  @@index([entityType, entityId, language])
+  @@map("translations")
+}
