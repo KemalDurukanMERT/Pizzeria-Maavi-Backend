@@ -1,4 +1,3 @@
-
 // Upload single image
 export const uploadImage = (req, res, next) => {
     if (!req.file) {
@@ -8,9 +7,8 @@ export const uploadImage = (req, res, next) => {
         });
     }
 
-    // Return the URL relative to server root
-    // Client will prepend API_URL or directly access server static path
-    const imageUrl = `/uploads/${req.file.filename}`;
+    // req.file.path will contain the secure Cloudinary URL
+    const imageUrl = req.file.path;
 
     res.json({
         success: true,
