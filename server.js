@@ -32,10 +32,32 @@ import webhookRoutes from './routes/webhookRoutes.js';
 const app = express();
 const httpServer = createServer(app);
 
-// Initialize Socket.io
+// CORS - Revised for Production
+const allowedOrigins = [
+    config.cors.customerUrl?.replace(/\/$/, ""),
+    config.cors.adminUrl?.replace(/\/$/, ""),
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174'
+].filter(Boolean);
+
+// Initialize Socket.io with robust CORS
 const io = new Server(httpServer, {
     cors: {
-        origin: [config.cors.customerUrl, config.cors.adminUrl],
+        origin: (origin, callback) => {
+            // Allow sockets with no origin (like the Print Agent bridge)
+            if (!origin) return callback(null, true);
+
+            const normalizedOrigin = origin.replace(/\/$/, "");
+            if (allowedOrigins.includes(normalizedOrigin)) {
+                callback(null, true);
+            } else {
+                console.log('🚫 Socket CORS blocked:', origin);
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
+        methods: ["GET", "POST"],
         credentials: true,
     },
 });
@@ -61,26 +83,14 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
-// CORS - Revised for Production
-const allowedOrigins = [
-    config.cors.customerUrl?.replace(/\/$/, ""),
-    config.cors.adminUrl?.replace(/\/$/, ""),
-    'http://localhost:5173',
-    'http://localhost:5174'
-].filter(Boolean);
-
+// CORS configuration
 app.use(cors({
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps, curl requests, or our Printer Bridge script)
         if (!origin) return callback(null, true);
-
         const normalizedOrigin = origin.replace(/\/$/, "");
         if (allowedOrigins.indexOf(normalizedOrigin) !== -1) {
             callback(null, true);
         } else {
-            console.log('CORS Blocked for origin:', origin);
-            // Optionally allows it anyway for debugging if strict is off
-            // For now, let's keep strict but ensure empty origin is handled above
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -156,7 +166,12 @@ app.use(errorHandler);
 io.use((socket, next) => {
     // 1. Allow connections from trusted origins (Browser Clients)
     const origin = socket.handshake.headers.origin;
-    const isTrustedOrigin = allowedOrigins.includes(origin?.replace(/\/$/, ""));
+
+    // In dev or some bridge scenarios, origin might be missing
+    if (!origin) return next();
+
+    const normalizedOrigin = origin.replace(/\/$/, "");
+    const isTrustedOrigin = allowedOrigins.includes(normalizedOrigin);
 
     if (isTrustedOrigin) {
         return next();

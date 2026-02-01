@@ -116,15 +116,19 @@ export const handleWebhook = async (req, res, next) => {
             // Emit socket event
             const io = req.app.get('io');
 
-            // Notify Customer
+            // Notify Customer (both logged in and guest)
+            io.to(`order:${order.id}`).emit('order:statusChanged', {
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                status: 'CONFIRMED',
+            });
+
             if (order.userId) {
                 io.to(`user:${order.userId}`).emit('order:statusChanged', {
                     orderId: order.id,
                     orderNumber: order.orderNumber,
                     status: 'CONFIRMED',
                 });
-            } else {
-                // If guest, maybe notify via orderId room if implemented
             }
 
             // Notify Admin with full details
