@@ -49,6 +49,15 @@ export const getAllOrders = async (req, res, next) => {
                                     name: true,
                                 },
                             },
+                            customizations: {
+                                include: {
+                                    ingredient: {
+                                        select: {
+                                            name: true
+                                        }
+                                    }
+                                }
+                            }
                         },
                     },
                     payment: {
@@ -66,7 +75,11 @@ export const getAllOrders = async (req, res, next) => {
             ...order,
             items: order.items.map(item => ({
                 ...item,
-                productName: item.product.name
+                productName: item.product.name,
+                customizations: item.customizations.map(c => ({
+                    ...c,
+                    name: c.ingredient.name
+                }))
             }))
         }));
 
@@ -120,6 +133,14 @@ export const updateOrderStatus = async (req, res, next) => {
 
         // Emit socket event to customer
         const io = req.app.get('io');
+
+        // Always emit to the specific order room (for guest and logged in)
+        io.to(`order:${order.id}`).emit('order:statusChanged', {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+        });
+
         if (order.userId) {
             io.to(`user:${order.userId}`).emit('order:statusChanged', {
                 orderId: order.id,
@@ -164,7 +185,11 @@ export const updateOrderStatus = async (req, res, next) => {
                     }))
                 };
 
-                await printService.printOrder(printData);
+                const printJob = await printService.printOrder(printData);
+
+                // Emit socket event to printer agent
+                io.to('printer:main').emit('print:job:created', printJob);
+                console.log('Print job created:', printJob);
             } catch (printError) {
                 console.error('Auto-printing failed:', printError);
             }
@@ -219,6 +244,60 @@ export const getOrderStats = async (req, res, next) => {
                 cancelledOrders,
                 totalRevenue: totalRevenue._sum.total || 0,
             },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+// Print order manually (Reprint)
+export const printOrderManually = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        // Fetch full details for printing with customizations
+        const fullOrderForPrint = await prisma.order.findUnique({
+            where: { id },
+            include: {
+                user: true,
+                items: {
+                    include: {
+                        product: true,
+                        customizations: {
+                            include: {
+                                ingredient: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!fullOrderForPrint) {
+            throw new AppError('Order not found', 404);
+        }
+
+        const printData = {
+            ...fullOrderForPrint,
+            items: fullOrderForPrint.items.map(item => ({
+                ...item,
+                productName: item.product.name,
+                customizations: item.customizations.map(c => ({
+                    ...c,
+                    name: c.ingredient.name
+                }))
+            }))
+        };
+
+        const printJob = await printService.printOrder(printData);
+
+        // Emit socket event to printer agent
+        const io = req.app.get('io');
+        io.to('printer:main').emit('print:job:created', printJob);
+
+        res.json({
+            success: true,
+            message: 'Print job sent successfully',
+            data: printJob
         });
     } catch (error) {
         next(error);

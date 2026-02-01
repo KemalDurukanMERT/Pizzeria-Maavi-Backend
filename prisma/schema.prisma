@@ -188,6 +188,7 @@ enum DeliveryType {
 model Order {
   id                    String         @id @default(uuid())
   userId                String?        // nullable for guest orders
+  customerName          String?        // for guest orders or identifying the pickup person
   orderNumber           String         @unique
   status                OrderStatus    @default(PENDING)
   subtotal              Float
@@ -205,7 +206,8 @@ model Order {
   user                  User?          @relation(fields: [userId], references: [id])
   items                 OrderItem[]
   payment               Payment?
-  
+  printJobs             PrintJob[]
+    
   @@index([userId])
   @@index([status])
   @@index([createdAt])
@@ -312,3 +314,32 @@ model Translation {
   @@index([entityType, entityId, language])
   @@map("translations")
 }
+
+// ============================================
+// PRINT JOB MANAGEMENT
+// ============================================
+
+enum PrintJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model PrintJob {
+  id          String         @id @default(uuid())
+  orderId     String?
+  storeId     String         @default("main")
+  status      PrintJobStatus @default(PENDING)
+  content     Json
+  printerName String?
+  attempts    Int            @default(0)
+  lastError   String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  
+  order       Order?         @relation(fields: [orderId], references: [id])
+  @@index([status])
+  @@map("print_jobs")
+}
+

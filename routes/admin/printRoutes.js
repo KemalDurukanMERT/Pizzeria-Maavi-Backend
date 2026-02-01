@@ -4,11 +4,12 @@ import { authenticateAdmin, requireRole } from '../../middleware/adminAuth.js';
 
 const router = express.Router();
 
+router.post('/test', testPrint);
+
 router.use(authenticateAdmin);
 
 router.get('/list', getPrinters);
 router.get('/preview', getPreview);
 router.post('/set', requireRole('OWNER', 'MANAGER'), setPrinter);
-router.post('/test', testPrint);
 
 export default router;

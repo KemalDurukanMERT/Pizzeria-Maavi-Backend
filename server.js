@@ -6,8 +6,13 @@ import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import config from './config/config.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import errorHandler from './middleware/errorHandler.js';
 import rateLimiter from './middleware/rateLimiter.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -21,6 +26,8 @@ import adminUserRoutes from './routes/admin/userRoutes.js';
 import adminPrintRoutes from './routes/admin/printRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import printJobRoutes from './routes/printJobRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -115,6 +122,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/print', printJobRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Admin routes
 app.use('/api/admin/auth', adminAuthRoutes);
@@ -123,12 +132,17 @@ app.use('/api/admin/menu', adminMenuRoutes);
 app.use('/api/admin/users', adminUserRoutes);
 app.use('/api/admin/print', adminPrintRoutes);
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        message: 'Route not found',
-    });
+// Serve SPA fallback for all non-API routes
+app.get('*', (req, res) => {
+    // If it's an API request that wasn't caught, return 404 JSON
+    if (req.url.startsWith('/api')) {
+        return res.status(404).json({
+            success: false,
+            message: 'API Route not found',
+        });
+    }
+    // Otherwise serve the React app
+    res.sendFile(path.resolve(__dirname, 'public', 'index.html'));
 });
 
 // Error handler (must be last)
@@ -165,16 +179,34 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id, socket.isPrinter ? '(PRINTER)' : '(WEB)');
 
-    // Join room based on user type
     socket.on('join', (data) => {
+        // Support both object and simple string (for order tracking)
+        if (typeof data === 'string') {
+            socket.join(`order:${data}`);
+            console.log(`Socket joined order room: order:${data}`);
+            return;
+        }
+
         if (data.type === 'admin') {
-            // Extra check: Only allow admin room if user is authenticated via web or is a verified printer
-            // (For web, you might decode the JWT here, but for now we rely on the connection check)
             socket.join('admin');
-            console.log('Admin/Printer joined:', socket.id);
+            console.log('Admin joined:', socket.id);
         } else if (data.userId) {
             socket.join(`user:${data.userId}`);
             console.log('User joined:', data.userId);
+        } else if (data.orderId) {
+            socket.join(`order:${data.orderId}`);
+            console.log(`Socket joined order room: order:${data.orderId}`);
+        } else if (data.type === 'printer' && data.storeId) {
+            socket.join(`printer:${data.storeId}`);
+            console.log(`Printer joined store room: ${data.storeId}`);
+        }
+    });
+
+    // Listen for printer list updates
+    socket.on('printer:list', (data) => {
+        if (data.storeId && data.printers) {
+            if (!app.locals.activePrinters) app.locals.activePrinters = {};
+            app.locals.activePrinters[data.storeId] = data.printers;
         }
     });
 

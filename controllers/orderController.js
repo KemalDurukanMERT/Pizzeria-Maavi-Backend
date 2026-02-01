@@ -11,6 +11,7 @@ export const createOrder = async (req, res, next) => {
             deliveryAddress,
             paymentMethod,
             customerNotes,
+            customerName,
         } = req.body;
 
         const userId = req.user?.id || null;
@@ -96,6 +97,7 @@ export const createOrder = async (req, res, next) => {
                 deliveryType,
                 deliveryAddress,
                 customerNotes,
+                customerName,
                 estimatedDeliveryTime: new Date(Date.now() + 45 * 60 * 1000), // 45 minutes from now
                 items: {
                     create: orderItems.map((item) => ({
@@ -148,7 +150,13 @@ export const createOrder = async (req, res, next) => {
             ...order,
             items: order.items.map(item => ({
                 ...item,
-                productName: item.product.name
+                productName: item.product?.name || 'Tuote',
+                customizations: item.customizations?.map(c => ({
+                    ...c,
+                    name: c.ingredient?.name || 'Lisuke',
+                    // Ensure priceModifier is included for admin view if needed
+                    priceModifier: c.priceModifier // Add this line if it's missing and needed
+                }))
             }))
         };
 
@@ -205,9 +213,21 @@ export const getOrder = async (req, res, next) => {
             throw new AppError('Access denied', 403);
         }
 
+        const formattedOrder = {
+            ...order,
+            items: order.items.map(item => ({
+                ...item,
+                productName: item.product?.name || 'Tuote',
+                customizations: item.customizations?.map(c => ({
+                    ...c,
+                    name: c.ingredient?.name || 'Lisuke'
+                }))
+            }))
+        };
+
         res.json({
             success: true,
-            data: order,
+            data: formattedOrder,
         });
     } catch (error) {
         next(error);
@@ -235,6 +255,15 @@ export const getUserOrders = async (req, res, next) => {
                                     imageUrl: true,
                                 },
                             },
+                            customizations: {
+                                include: {
+                                    ingredient: {
+                                        select: {
+                                            name: true,
+                                        },
+                                    },
+                                },
+                            },
                         },
                     },
                     payment: {
@@ -248,10 +277,22 @@ export const getUserOrders = async (req, res, next) => {
             prisma.order.count({ where: { userId: req.user.id } }),
         ]);
 
+        const formattedOrders = orders.map(order => ({
+            ...order,
+            items: order.items.map(item => ({
+                ...item,
+                productName: item.product?.name || 'Tuote',
+                customizations: item.customizations?.map(c => ({
+                    ...c,
+                    name: c.ingredient?.name || 'Lisuke'
+                }))
+            }))
+        }));
+
         res.json({
             success: true,
             data: {
-                orders,
+                orders: formattedOrders,
                 pagination: {
                     page: parseInt(page),
                     limit: parseInt(limit),

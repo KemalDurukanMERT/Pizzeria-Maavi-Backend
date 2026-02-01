@@ -3,6 +3,7 @@ import {
     getAllOrders,
     updateOrderStatus,
     getOrderStats,
+    printOrderManually,
 } from '../../controllers/admin/orderController.js';
 import { authenticateAdmin, requireRole } from '../../middleware/adminAuth.js';
 import { validate, schemas } from '../../middleware/validation.js';
@@ -20,5 +21,8 @@ router.get('/stats', getOrderStats);
 
 // Update order status
 router.patch('/:id/status', validate(schemas.updateOrderStatus), updateOrderStatus);
+
+// Print order manually (Reprint)
+router.post('/:id/print', printOrderManually);
 
 export default router;

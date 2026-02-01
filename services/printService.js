@@ -1,125 +1,129 @@
-import { exec } from 'child_process';
-import path from 'path';
-import fs from 'fs';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import prisma from '../utils/db.js';
 
 class PrintService {
-    constructor() {
-        this.printerName = process.env.THERMAL_PRINTER_NAME || 'Star TSP100';
-    }
-
-    async getAvailablePrinters() {
-        try {
-            const { stdout } = await execAsync('powershell -Command "Get-Printer | Select-Object Name | ConvertTo-Json"');
-            const data = JSON.parse(stdout);
-            return Array.isArray(data) ? data.map(p => p.Name) : [data.Name];
-        } catch (error) {
-            console.error('Error fetching printers:', error);
-            return [];
-        }
-    }
-
+    /**
+     * Creates a new PrintJob in the database for the given order.
+     * @param {Object} order - Full order object with items and user details
+     * @returns {Promise<Object>} Created PrintJob
+     */
     async printOrder(order) {
         try {
-            const receiptPath = await this.generateReceiptFile(order);
+            // Create the content structure that the agent expects
+            const printContent = this.generatePrintContent(order);
 
-            // Format the PowerShell command to print to the specific printer
-            // We use the 'futurePRNT' driver capabilities if possible, 
-            // but for simplicity, we send a formatted text/HTML print job.
-
-            // Command to print to a specific printer in Windows
-            const command = `powershell -Command "Start-Process -FilePath '${receiptPath}' -Verb PrintTo -ArgumentList '${this.printerName}'"`;
-
-            console.log(`Sending print job to ${this.printerName}...`);
-            await execAsync(command);
-
-            // Clean up after a delay to ensure it's printed
-            setTimeout(() => {
-                if (fs.existsSync(receiptPath)) {
-                    fs.unlinkSync(receiptPath);
-                    const htmlPath = receiptPath.replace('.txt', '.html');
-                    if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
+            const printJob = await prisma.printJob.create({
+                data: {
+                    orderId: order.id,
+                    storeId: 'main', // Default store ID, can be dynamic later
+                    status: 'PENDING',
+                    content: printContent,
+                    printerName: null // Pending assignment
                 }
-            }, 60000);
+            });
 
-            return { success: true };
+            console.log(`PrintJob created for Order #${order.orderNumber}: ${printJob.id}`);
+            return printJob;
         } catch (error) {
-            console.error('Printing failed:', error);
+            console.error('Failed to create PrintJob:', error);
             throw error;
         }
     }
 
-    async generateReceiptFile(order, returnOnly = false) {
+    /**
+     * Generates a structural representation of the receipt.
+     * The agent will convert this to ESC/POS commands.
+     */
+    generatePrintContent(order) {
         const dukkanAdi = "PIZZERIA MAVI";
         const dukkanAdres = "Mavikatu 12, Helsinki";
         const dukkanTel = "+358 10 123 4567";
-
         const now = new Date().toLocaleString('fi-FI');
 
         const deliveryTypeFi = order.deliveryType === 'DELIVERY' ? 'KULJETUS' : 'NOUTO';
-        const paymentMethodFi = {
+
+        const paymentMap = {
             'CARD': 'KORTTI',
             'CASH': 'KÄTEINEN',
             'VERKKOMAKSU': 'VERKKOMAKSU',
             'LOUNASSETELI': 'LOUNASSETELI',
             'EPASSI': 'EPASSI'
-        }[order.paymentMethod] || order.paymentMethod;
+        };
+        const paymentMethodFi = paymentMap[order.paymentMethod] || order.paymentMethod;
 
-        let receiptText = `
---------------------------------
-        ${dukkanAdi}
---------------------------------
-${dukkanAdres}
-Puh: ${dukkanTel}
+        // Simplify items for the agent
+        const items = order.items.map(item => ({
+            quantity: item.quantity,
+            name: item.productName || item.product?.name || 'Tuote',
+            price: item.totalPrice,
+            customizations: (item.customizations || []).map(c => ({
+                name: c.name || c.ingredient?.name || '',
+                price: c.priceModifier
+            }))
+        }));
 
-Tilausnro: #${order.orderNumber}
-Päivämäärä: ${now}
-Tyyppi: ${deliveryTypeFi}
---------------------------------
-TUOTTEET:
-`;
+        return {
+            header: {
+                title: dukkanAdi,
+                address: dukkanAdres,
+                phone: dukkanTel
+            },
+            meta: {
+                orderNumber: order.orderNumber,
+                date: now,
+                deliveryType: deliveryTypeFi,
+                paymentMethod: paymentMethodFi
+            },
+            items: items,
+            totals: {
+                total: order.total,
+                subtotal: order.subtotal,
+                deliveryFee: order.deliveryFee
+            },
+            customer: {
+                name: order.user ? `${order.user.firstName} ${order.user.lastName}` : (order.deliveryAddress?.customerName || 'Vieras'),
+                phone: order.user?.phone || order.deliveryAddress?.phoneNumber || '',
+                address: order.deliveryAddress ?
+                    `${order.deliveryAddress.street}, ${order.deliveryAddress.postalCode} ${order.deliveryAddress.city}` :
+                    null,
+                notes: order.customerNotes
+            }
+        };
+    }
 
-        order.items.forEach(item => {
-            receiptText += `${item.quantity}x ${item.productName.padEnd(20)} €${item.totalPrice.toFixed(2)}\n`;
-            if (item.customizations && item.customizations.length > 0) {
+    // [NEW] Generate text preview for Admin UI
+    generatePreviewText(order) {
+        const content = this.generatePrintContent(order);
+
+        let txt = '';
+        txt += `            ${content.header.title}\n`;
+        txt += `           ${content.header.address}\n`;
+        txt += `             ${content.header.phone}\n\n`;
+        txt += `Tilaus: #${content.meta.orderNumber}\n`;
+        txt += `Pvm:    ${content.meta.date}\n`;
+        txt += `Tyyppi: ${content.meta.deliveryType}\n`;
+        txt += `Maksu:  ${content.meta.paymentMethod}\n`;
+        txt += '-'.repeat(32) + '\n';
+
+        content.items.forEach(item => {
+            txt += `${item.quantity}x ${item.name.padEnd(20)} ${item.price.toFixed(2)}\n`;
+            if (item.customizations) {
                 item.customizations.forEach(c => {
-                    receiptText += `  - ${c.name || (c.ingredient?.name)} (+€${c.priceModifier})\n`;
+                    txt += `   + ${c.name} (${c.price}e)\n`;
                 });
             }
         });
 
-        receiptText += `
---------------------------------
-YHTEENSÄ:             €${order.total.toFixed(2)}
---------------------------------
-MAKSUTAPA: ${paymentMethodFi}
---------------------------------
-ASIAKASTIEDOT:
-${order.user ? `${order.user.firstName} ${order.user.lastName}` : (order.deliveryAddress?.customerName || 'Vieras')}
-Puh: ${order.user?.phone || 'N/A'}
-Osoite:
-${order.deliveryAddress ?
-                `${order.deliveryAddress.street}\n${order.deliveryAddress.postalCode} ${order.deliveryAddress.city}` :
-                'NOUTO'}
+        txt += '-'.repeat(32) + '\n';
+        txt += `Yhteensa:             ${content.totals.total.toFixed(2)} EUR\n`;
+        txt += '-'.repeat(32) + '\n';
+        txt += 'Asiakas:\n';
+        txt += `${content.customer.name}\n`;
+        if (content.customer.phone) txt += `${content.customer.phone}\n`;
+        if (content.customer.address) txt += `${content.customer.address}\n`;
+        if (content.customer.notes) txt += `\nHUOM:\n${content.customer.notes}\n`;
+        txt += '\n       Kiitos tilauksesta!\n';
 
---------------------------------
-     Hyvää ruokahalua!
---------------------------------
-\n\n\n\n\n`; // Add some space for the cutter
-
-        if (returnOnly) return receiptText;
-
-        const filename = `receipt_${order.id || 'test'}.txt`;
-        const tempPath = path.join(process.cwd(), 'temp', filename);
-
-        if (!fs.existsSync(path.join(process.cwd(), 'temp'))) {
-            fs.mkdirSync(path.join(process.cwd(), 'temp'));
-        }
-
-        fs.writeFileSync(tempPath, receiptText, 'utf8');
-        return tempPath;
+        return txt;
     }
 }
 

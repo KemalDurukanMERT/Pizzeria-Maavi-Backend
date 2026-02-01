@@ -20,7 +20,12 @@ export const getProducts = async (req, res, next) => {
     try {
         const products = await prisma.product.findMany({
             orderBy: { name: 'asc' },
-            include: { category: true }
+            include: {
+                category: true,
+                customizableIngredients: {
+                    include: { ingredient: true }
+                }
+            }
         });
         res.json({ success: true, data: products });
     } catch (error) {
@@ -130,6 +135,7 @@ export const createProduct = async (req, res, next) => {
             preparationTime,
             allergens,
             nutritionalInfo,
+            customizableIngredients
         } = req.body;
 
         const product = await prisma.product.create({
@@ -144,7 +150,19 @@ export const createProduct = async (req, res, next) => {
                 preparationTime: preparationTime || 15,
                 allergens: allergens || [],
                 nutritionalInfo,
+                customizableIngredients: customizableIngredients ? {
+                    create: customizableIngredients.map(ci => ({
+                        ingredientId: ci.ingredientId,
+                        action: ci.action,
+                        priceModifier: parseFloat(ci.priceModifier) || 0
+                    }))
+                } : undefined
             },
+            include: {
+                customizableIngredients: {
+                    include: { ingredient: true }
+                }
+            }
         });
 
         res.status(201).json({
@@ -160,15 +178,30 @@ export const createProduct = async (req, res, next) => {
 export const updateProduct = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const updateData = req.body;
+        const { customizableIngredients, ...rest } = req.body;
 
-        if (updateData.name) {
-            updateData.slug = slugify(updateData.name);
+        if (rest.name) {
+            rest.slug = slugify(rest.name);
         }
 
         const product = await prisma.product.update({
             where: { id },
-            data: updateData,
+            data: {
+                ...rest,
+                customizableIngredients: customizableIngredients ? {
+                    deleteMany: {},
+                    create: customizableIngredients.map(ci => ({
+                        ingredientId: ci.ingredientId,
+                        action: ci.action,
+                        priceModifier: parseFloat(ci.priceModifier) || 0
+                    }))
+                } : undefined
+            },
+            include: {
+                customizableIngredients: {
+                    include: { ingredient: true }
+                }
+            }
         });
 
         res.json({

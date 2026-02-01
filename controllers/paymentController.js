@@ -127,11 +127,35 @@ export const handleWebhook = async (req, res, next) => {
                 // If guest, maybe notify via orderId room if implemented
             }
 
-            // Notify Admin
-            io.emit('admin:newOrder', order);
-            // Actually 'admin:newOrder' might be for pending orders too. 
-            // Maybe 'admin:orderUpdated'. 
-            // But usually confirmed orders are what kitchen sees.
+            // Notify Admin with full details
+            const fullOrder = await prisma.order.findUnique({
+                where: { id: order.id },
+                include: {
+                    user: { select: { firstName: true, lastName: true } },
+                    items: {
+                        include: {
+                            product: { select: { name: true } },
+                            customizations: { include: { ingredient: { select: { name: true } } } }
+                        }
+                    },
+                    payment: true
+                }
+            });
+
+            const formattedOrder = {
+                ...fullOrder,
+                items: fullOrder.items.map(item => ({
+                    ...item,
+                    productName: item.product?.name || 'Tuote',
+                    customizations: item.customizations?.map(c => ({
+                        ...c,
+                        name: c.ingredient?.name || 'Lisuke'
+                    }))
+                }))
+            };
+
+            io.to('admin').emit('admin:newOrder', formattedOrder);
+            io.to('admin').emit('order:statusChanged', formattedOrder);
         } else if (result.success && result.status === 'FAILED') {
             await prisma.payment.update({
                 where: { orderId: result.orderId },

@@ -21,9 +21,9 @@ class MockProvider {
 
     async processWebhook(payload) {
         // The mock bank (frontend) will send a simple JSON payload
-        // { orderId: "...", status: "success" }
+        // { orderId: "...", status: "ok" or "success" }
 
-        if (payload.status === 'success') {
+        if (payload.status === 'success' || payload.status === 'ok') {
             return {
                 success: true,
                 orderId: payload.orderId,

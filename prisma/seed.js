@@ -21,6 +21,28 @@ async function main() {
     });
     console.log('✅ Admin user created:', admin.email);
 
+
+    // Create regular user
+    const userPassword = await bcrypt.hash('user123', 12);
+    const user = await prisma.user.upsert({
+        where: { email: 'user@example.com' },
+        update: {},
+        create: {
+            email: 'user@example.com',
+            passwordHash: userPassword,
+            firstName: 'John',
+            lastName: 'Doe',
+            phone: '+358401234567',
+            address: {
+                street: 'Mannerheimintie 1',
+                city: 'Helsinki',
+                postalCode: '00100'
+            },
+            isActive: true,
+        },
+    });
+    console.log('✅ Regular user created:', user.email);
+
     // Create categories
     const pizzaCategory = await prisma.category.upsert({
         where: { slug: 'pizza' },
@@ -279,6 +301,9 @@ async function main() {
     console.log('\n📝 Admin credentials:');
     console.log('   Email: admin@pizzeriamavi.fi');
     console.log('   Password: admin123');
+    console.log('\n👤 User credentials:');
+    console.log('   Email: user@example.com');
+    console.log('   Password: user123');
 }
 
 main()
