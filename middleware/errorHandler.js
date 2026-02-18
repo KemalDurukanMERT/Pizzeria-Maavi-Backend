@@ -19,14 +19,12 @@ const errorHandler = (err, req, res, next) => {
             stack: err.stack,
         });
     } else {
-        // Production - don't leak error details
         if (err.isOperational) {
             res.status(err.statusCode).json({
                 success: false,
                 message: err.message,
             });
         } else {
-            // Programming or unknown error
             console.error('ERROR 💥', err);
             res.status(500).json({
                 success: false,

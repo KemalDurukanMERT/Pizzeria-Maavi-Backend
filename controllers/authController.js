@@ -8,12 +8,10 @@ import {
     verifyRefreshToken,
 } from '../utils/helpers.js';
 
-// Register new user
 export const register = async (req, res, next) => {
     try {
         const { email, password, firstName, lastName, phone, address } = req.body;
 
-        // Check if user already exists
         const existingUser = await prisma.user.findUnique({
             where: { email },
         });
@@ -22,10 +20,8 @@ export const register = async (req, res, next) => {
             throw new AppError('Email already registered', 400);
         }
 
-        // Hash password
         const passwordHash = await hashPassword(password);
 
-        // Create user
         const user = await prisma.user.create({
             data: {
                 email,
@@ -46,7 +42,6 @@ export const register = async (req, res, next) => {
             },
         });
 
-        // Generate tokens
         const token = generateToken({
             sub: user.id,
             email: user.email,

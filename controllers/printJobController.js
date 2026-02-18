@@ -1,9 +1,8 @@
 import prisma from '../utils/db.js';
 
-// Get pending jobs for a specific store (or all if not filtered)
 export const getPendingJobs = async (req, res, next) => {
     try {
-        const { storeId } = req.query; // Agent can filter by store
+        const { storeId } = req.query;
 
         const jobs = await prisma.printJob.findMany({
             where: {
@@ -27,7 +26,6 @@ export const getPendingJobs = async (req, res, next) => {
     }
 };
 
-// Claim a job (Atomic update)
 export const claimJob = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -58,12 +56,9 @@ export const claimJob = async (req, res, next) => {
 
         res.json({ success: true, data: job });
     } catch (error) {
-        // If race condition or logic error
         res.status(409).json({ success: false, message: error.message });
     }
 };
-
-// Update job status (Completed/Failed)
 export const updateJobStatus = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -88,7 +83,6 @@ export const updateJobStatus = async (req, res, next) => {
     }
 };
 
-// Get job details (if agent needs full content again)
 export const getJobDetails = async (req, res, next) => {
     try {
         const { id } = req.params;

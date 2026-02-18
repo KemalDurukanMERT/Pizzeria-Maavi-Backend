@@ -35,7 +35,6 @@ export const authenticate = async (req, res, next) => {
     }
 };
 
-// Optional authentication - doesn't fail if no token
 export const optionalAuth = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;

@@ -2,12 +2,10 @@ import prisma from '../../utils/db.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { hashPassword, comparePassword, generateToken } from '../../utils/helpers.js';
 
-// Admin login
 export const login = async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
-        // Find admin
         const admin = await prisma.admin.findUnique({
             where: { email },
         });
@@ -16,12 +14,9 @@ export const login = async (req, res, next) => {
             throw new AppError('Invalid email or password', 401);
         }
 
-        // Check if admin is active
         if (!admin.isActive) {
             throw new AppError('Account is deactivated', 403);
         }
-
-        // Verify password
         const isPasswordValid = await comparePassword(password, admin.passwordHash);
 
         if (!isPasswordValid) {

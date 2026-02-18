@@ -6,7 +6,6 @@ export const handleOrderStatusWebhook = async (req, res, next) => {
     try {
         const { orderId, status, secret } = req.body;
 
-        // Simple security check (in production you'd use a more robust verification)
         const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'mavipizza_secret_123';
         if (secret !== WEBHOOK_SECRET) {
             throw new AppError('Unauthorized webhook call', 401);

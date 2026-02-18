@@ -12,7 +12,6 @@ cloudinary.config({
     api_secret: config.cloudinary.apiSecret,
 });
 
-// Storage configuration (Cloudinary)
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
@@ -22,7 +21,6 @@ const storage = new CloudinaryStorage({
     },
 });
 
-// File filter (Optional, as CloudinaryStorage handles formats, but keeps it safe)
 const fileFilter = (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
         cb(null, true);

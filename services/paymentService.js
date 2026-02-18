@@ -27,12 +27,9 @@ class PaymentService {
         return provider;
     }
 
-    // Initiate payment
-    // We pass extra options like email for Stripe
     async initiatePayment(orderId, providerName, amount, options = {}) {
         const handler = this.getProvider(providerName);
 
-        // Pass specific args based on provider
         if (['STRIPE', 'VERKKOMAKSU'].includes(providerName)) {
             return await handler.createPayment(orderId, amount, options.email);
         } else if (['LOUNASSETELI', 'EPASSI'].includes(providerName)) {

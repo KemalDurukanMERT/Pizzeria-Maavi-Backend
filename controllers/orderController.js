@@ -16,7 +16,6 @@ export const createOrder = async (req, res, next) => {
 
         const userId = req.user?.id || null;
 
-        // Validate products and calculate prices
         const orderItems = [];
 
         for (const item of items) {
@@ -38,7 +37,6 @@ export const createOrder = async (req, res, next) => {
             let customizationPrice = 0;
             const customizations = [];
 
-            // Validate and calculate customizations
             if (item.customizations && item.customizations.length > 0) {
                 for (const customization of item.customizations) {
                     const validCustomization = product.customizableIngredients.find(
@@ -76,14 +74,10 @@ export const createOrder = async (req, res, next) => {
             });
         }
 
-        // Calculate order totals
         const deliveryFee = deliveryType === 'DELIVERY' ? 5.0 : 0;
         const totals = calculateOrderTotal(orderItems, deliveryFee);
 
-        // Generate order number
         const orderNumber = generateOrderNumber();
-
-        // Create order with items
         const order = await prisma.order.create({
             data: {
                 userId,
@@ -98,7 +92,7 @@ export const createOrder = async (req, res, next) => {
                 deliveryAddress,
                 customerNotes,
                 customerName,
-                estimatedDeliveryTime: new Date(Date.now() + 45 * 60 * 1000), // 45 minutes from now
+                estimatedDeliveryTime: new Date(Date.now() + 45 * 60 * 1000),
                 items: {
                     create: orderItems.map((item) => ({
                         productId: item.productId,
@@ -145,7 +139,6 @@ export const createOrder = async (req, res, next) => {
             },
         });
 
-        // Format order for admin
         const formattedOrderForAdmin = {
             ...order,
             items: order.items.map(item => ({
@@ -154,13 +147,11 @@ export const createOrder = async (req, res, next) => {
                 customizations: item.customizations?.map(c => ({
                     ...c,
                     name: c.ingredient?.name || 'Lisuke',
-                    // Ensure priceModifier is included for admin view if needed
-                    priceModifier: c.priceModifier // Add this line if it's missing and needed
+                    priceModifier: c.priceModifier
                 }))
             }))
         };
 
-        // Emit socket event to admin
         const io = req.app.get('io');
         io.to('admin').emit('admin:newOrder', formattedOrderForAdmin);
 
@@ -173,7 +164,6 @@ export const createOrder = async (req, res, next) => {
     }
 };
 
-// Get order by ID
 export const getOrder = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -208,7 +198,6 @@ export const getOrder = async (req, res, next) => {
             throw new AppError('Order not found', 404);
         }
 
-        // Check if user owns this order (if authenticated)
         if (req.user && order.userId && order.userId !== req.user.id) {
             throw new AppError('Access denied', 403);
         }
@@ -234,7 +223,6 @@ export const getOrder = async (req, res, next) => {
     }
 };
 
-// Get user's order history
 export const getUserOrders = async (req, res, next) => {
     try {
         const { page = 1, limit = 10 } = req.query;

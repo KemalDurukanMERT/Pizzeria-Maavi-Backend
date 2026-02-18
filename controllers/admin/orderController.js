@@ -131,10 +131,8 @@ export const updateOrderStatus = async (req, res, next) => {
             }))
         };
 
-        // Emit socket event to customer
         const io = req.app.get('io');
 
-        // Always emit to the specific order room (for guest and logged in)
         io.to(`order:${order.id}`).emit('order:statusChanged', {
             orderId: order.id,
             orderNumber: order.orderNumber,
@@ -149,13 +147,10 @@ export const updateOrderStatus = async (req, res, next) => {
             });
         }
 
-        // Emit socket event to admin
         io.to('admin').emit('order:statusChanged', formattedOrder);
 
-        // Auto-print if confirmed
         if (status === 'CONFIRMED') {
             try {
-                // Fetch full details for printing with customizations
                 const fullOrderForPrint = await prisma.order.findUnique({
                     where: { id },
                     include: {

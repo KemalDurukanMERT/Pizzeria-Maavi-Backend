@@ -32,7 +32,6 @@ import webhookRoutes from './routes/webhookRoutes.js';
 const app = express();
 const httpServer = createServer(app);
 
-// CORS - Revised for Production
 const allowedOrigins = [
     config.cors.customerUrl?.replace(/\/$/, ""),
     config.cors.adminUrl?.replace(/\/$/, ""),
@@ -42,11 +41,9 @@ const allowedOrigins = [
     'http://127.0.0.1:5174'
 ].filter(Boolean);
 
-// Initialize Socket.io with robust CORS
 const io = new Server(httpServer, {
     cors: {
         origin: (origin, callback) => {
-            // Allow sockets with no origin (like the Print Agent bridge)
             if (!origin) return callback(null, true);
 
             const normalizedOrigin = origin.replace(/\/$/, "");
@@ -62,12 +59,7 @@ const io = new Server(httpServer, {
     },
 });
 
-// Make io accessible to routes
 app.set('io', io);
-
-// ============================================
-// MIDDLEWARE
-// ============================================
 
 // Security headers
 app.use(helmet({
@@ -112,9 +104,6 @@ if (config.nodeEnv === 'development') {
 // Rate limiting
 app.use(rateLimiter);
 
-// ============================================
-// ROUTES
-// ============================================
 
 // Health check
 app.get('/health', (req, res) => {
@@ -144,30 +133,19 @@ app.use('/api/admin/print', adminPrintRoutes);
 
 // Serve SPA fallback for all non-API routes
 app.get('*', (req, res) => {
-    // If it's an API request that wasn't caught, return 404 JSON
     if (req.url.startsWith('/api')) {
         return res.status(404).json({
             success: false,
             message: 'API Route not found',
         });
     }
-    // Otherwise serve the React app
     res.sendFile(path.resolve(__dirname, 'public', 'index.html'));
 });
 
-// Error handler (must be last)
 app.use(errorHandler);
 
-// ============================================
-// SOCKET.IO
-// ============================================
-
-// Middleware for Socket Authentication
 io.use((socket, next) => {
-    // 1. Allow connections from trusted origins (Browser Clients)
     const origin = socket.handshake.headers.origin;
-
-    // In dev or some bridge scenarios, origin might be missing
     if (!origin) return next();
 
     const normalizedOrigin = origin.replace(/\/$/, "");
@@ -177,12 +155,10 @@ io.use((socket, next) => {
         return next();
     }
 
-    // 2. Allow connections with valid Printer API Key (Server-to-Server / Bridge)
     const token = socket.handshake.auth?.token || socket.handshake.headers?.['x-api-key'];
-    const PRINTER_SECRET = process.env.PRINTER_SECRET_KEY || config.jwt.secret; // Fallback to JWT secret if specific key not set
+    const PRINTER_SECRET = process.env.PRINTER_SECRET_KEY || config.jwt.secret;
 
     if (token === PRINTER_SECRET) {
-        // Mark socket as a trusted printer
         socket.isPrinter = true;
         return next();
     }
@@ -195,7 +171,6 @@ io.on('connection', (socket) => {
     console.log('Client connected:', socket.id, socket.isPrinter ? '(PRINTER)' : '(WEB)');
 
     socket.on('join', (data) => {
-        // Support both object and simple string (for order tracking)
         if (typeof data === 'string') {
             socket.join(`order:${data}`);
             console.log(`Socket joined order room: order:${data}`);
@@ -217,7 +192,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Listen for printer list updates
     socket.on('printer:list', (data) => {
         if (data.storeId && data.printers) {
             if (!app.locals.activePrinters) app.locals.activePrinters = {};
@@ -230,10 +204,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// ============================================
-// START SERVER
-// ============================================
-
 const PORT = config.port;
 
 httpServer.listen(PORT, () => {
@@ -243,7 +213,6 @@ httpServer.listen(PORT, () => {
     console.log(`👨‍💼 Admin URL: ${config.cors.adminUrl}`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received, closing server...');
     httpServer.close(() => {

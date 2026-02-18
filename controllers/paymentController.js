@@ -49,11 +49,6 @@ export const initiatePayment = async (req, res, next) => {
             { email: order.user?.email }
         );
 
-        // Update payment record
-        // Create if not exists (upsert logic if needed, but usually 1:1)
-        // Order creation should have created generic payment record?
-        // Checking orderController (createOrder) would confirm. 
-        // Assuming update is safe if payment exists, otherwise create.
         if (order.payment) {
             await prisma.payment.update({
                 where: { orderId: order.id },

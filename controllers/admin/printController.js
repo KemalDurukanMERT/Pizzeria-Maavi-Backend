@@ -2,11 +2,9 @@ import printService from '../../services/printService.js';
 
 export const getPrinters = async (req, res, next) => {
     try {
-        // Fetch printers from in-memory store (populated by Agent)
         const activePrinters = req.app.locals.activePrinters || {};
-        const printerList = activePrinters['main'] || []; // Default to 'main' store
+        const printerList = activePrinters['main'] || [];
 
-        // Ensure it's a flat list of names
         const names = printerList.map(p => p.name || p);
 
         res.json({ success: true, data: names });
@@ -17,17 +15,8 @@ export const getPrinters = async (req, res, next) => {
 
 export const setPrinter = async (req, res, next) => {
     try {
-        // In the new agent architecture, the agent controls the printer.
-        // But we can store a preference if needed, or just acknowledge.
-        // For testing, the user might want to persist this selection to be sent to Agent?
-        // Actually, the agent reads its OWN local config. The Admin UI 'Select Printer' 
-        // is mostly for the 'Test Print' button in this context, OR we need to send a config update to Agent.
-
-        // For now, let's just return success, assuming the user configures the Agent physically
-        // OR we could emit an event to the agent to switch printers if it supports it.
         const { name } = req.body;
 
-        // Optional: Emit config update to agent
         const io = req.app.get('io');
         io.to('printer:main').emit('printer:config:update', { printerName: name });
 
