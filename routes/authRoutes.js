@@ -8,7 +8,7 @@ const router = express.Router();
 
 // Public routes
 router.post('/register', authLimiter, validate(schemas.register), register);
-router.post('/login', authLimiter, validate(schemas.login), login);
+router.post('/login', validate(schemas.login), login); // authLimiter removed
 router.post('/refresh', refresh);
 
 // Protected routes
