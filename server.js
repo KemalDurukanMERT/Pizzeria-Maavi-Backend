@@ -30,6 +30,7 @@ import printJobRoutes from './routes/printJobRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 
 const allowedOrigins = [
